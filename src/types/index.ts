@@ -1,3 +1,5 @@
+import { User } from 'firebase/auth';
+
 export interface Singer {
   id: string;
   name: string;
@@ -16,4 +18,8 @@ export interface QueueContextType {
   markAsSung: (id: string) => void;
   userName: string | null;
   setUserName: (name: string) => void;
+  user: User | null;
+  signInWithGoogle: () => Promise<void>;
+  signOutUser: () => Promise<void>;
 }
+

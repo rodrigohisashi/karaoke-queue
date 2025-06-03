@@ -13,6 +13,8 @@ import {
 } from 'firebase/database';
 import { db as rtdb } from '../firebase/config';
 import { QueueContextType, Singer } from '../types';
+import { subscribeToAuth, signInWithGoogle, signOutUser } from '../utils/auth';
+import { User } from 'firebase/auth';
 
 const QueueContext = createContext<QueueContextType>({
     queue: [],
@@ -21,7 +23,10 @@ const QueueContext = createContext<QueueContextType>({
     removeSinger: async () => {},
     markAsSung: async () => {},
     userName: null,
-    setUserName: () => {}
+    setUserName: () => {},
+    user: null,
+    signInWithGoogle: async () => {},
+    signOutUser: async () => {}
 });
 
 export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -33,6 +38,8 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [userName, setUserName] = useState<string | null>(() => {
         return localStorage.getItem('karaokeUserName');
     });
+    // Firebase user state
+    const [user, setUser] = useState<User | null>(null);
 
     // Persist userName into localStorage
     useEffect(() => {
@@ -40,6 +47,17 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             localStorage.setItem('karaokeUserName', userName);
         }
     }, [userName]);
+
+    // Listen for Firebase Auth state changes
+    useEffect(() => {
+        const unsubscribe = subscribeToAuth((firebaseUser) => {
+            setUser(firebaseUser);
+            if (firebaseUser && firebaseUser.displayName) {
+                setUserName(firebaseUser.displayName);
+            }
+        });
+        return () => unsubscribe();
+    }, []);
 
     //
     // ─── LISTEN TO /queue AND REBUILD + SORT EVERYTHING ─────────────────────────────
@@ -186,7 +204,10 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 removeSinger,
                 markAsSung,
                 userName,
-                setUserName
+                setUserName,
+                user,
+                signInWithGoogle,
+                signOutUser
             }}
         >
             {children}
@@ -195,3 +216,4 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 };
 
 export const useQueue = () => useContext(QueueContext);
+

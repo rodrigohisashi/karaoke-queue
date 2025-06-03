@@ -3,7 +3,7 @@ import { Mic } from 'lucide-react';
 import { useQueue } from '../context/QueueContext';
 
 const Header: React.FC = () => {
-  const { queue, currentSingerIndex } = useQueue();
+  const { queue, currentSingerIndex, user, signInWithGoogle, signOutUser } = useQueue();
   const currentSinger = queue[currentSingerIndex];
   
   return (
@@ -19,36 +19,35 @@ const Header: React.FC = () => {
               hday Karaoke
             </h1>
           </div>
-        </div>
-        
-        {currentSinger && (
-          <div className="mt-6 p-4 bg-white/10 backdrop-blur-sm rounded-lg">
-            <div className="text-sm uppercase tracking-wider opacity-80 mb-1">
-              Now Singing
-            </div>
-            <div className="flex items-center">
-              <div className="mr-3 h-10 w-10 bg-pink-500 rounded-full flex items-center justify-center animate-pulse">
-                <Mic className="w-5 h-5" />
+          <div>
+            {user ? (
+              <div className="flex items-center space-x-3">
+                {user.photoURL && (
+                  <img src={user.photoURL} alt="avatar" className="w-8 h-8 rounded-full border-2 border-white" />
+                )}
+                <span className="font-medium">{user.displayName || user.email}</span>
+                <button
+                  onClick={signOutUser}
+                  className="ml-2 px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white rounded text-sm"
+                >
+                  Sign out
+                </button>
               </div>
-              <div>
-                <div className="font-bold text-xl">{currentSinger.name}</div>
-                <div className="opacity-90">
-                  {currentSinger.song}
-                  {currentSinger.artist && (
-                    <span> • {currentSinger.artist}</span>
-                  )}
-                </div>
-              </div>
-            </div>
+            ) : (
+              <button
+                onClick={signInWithGoogle}
+                className="px-4 py-2 bg-white text-purple-700 font-semibold rounded shadow hover:bg-gray-100 text-sm"
+              >
+                Sign in with Google
+              </button>
+            )}
           </div>
-        )}
-        
-        <div className="flex justify-between items-center mt-6">
+        </div>
+        <div className="flex justify-between items-center mt-4">
           <div>
             <span className="text-sm opacity-80">Total in queue:</span>
             <span className="ml-2 font-bold">{queue.length}</span>
           </div>
-          
           {queue.length > 0 && (
             <div className="text-sm">
               <span className="opacity-80">
@@ -65,3 +64,4 @@ const Header: React.FC = () => {
 };
 
 export default Header;
+
