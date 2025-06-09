@@ -142,7 +142,6 @@ export const setUserRole = async (userId: string, isAdmin: boolean) => {
 
 // Check if user has specific permission
 export const hasPermission = (permissions: UserPermission[], permission: UserPermission): boolean => {
-  // If user has any permissions, they have all permissions (admin)
-  return permissions.length > 0;
+  return permissions.includes(permission);
 };
 
