@@ -1,7 +1,43 @@
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { ref, get, set } from 'firebase/database';
 import { auth, googleProvider, db, USERS_PATH } from '../firebase/config';
 import { UserRole, UserPermission } from '../types';
+
+export const signInWithEmail = async (email: string, password: string) => {
+  try {
+    console.log('Attempting to sign in with email:', email);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    console.log('Sign in successful, checking user role');
+    await checkAndSetUserRole(result.user);
+    return result;
+  } catch (error) {
+    console.error('Sign in error:', error);
+    throw error;
+  }
+};
+
+export const registerWithEmail = async (email: string, password: string, nickname: string) => {
+  try {
+    console.log('Attempting to register with email:', email);
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    console.log('Registration successful, setting user role and displayName');
+    if (auth.currentUser) {
+      try {
+        await updateProfile(auth.currentUser, { displayName: nickname });
+        console.log('DisplayName set successfully');
+      } catch (profileError) {
+        console.error('Error setting displayName:', profileError);
+      }
+    } else {
+      console.warn('No currentUser found after registration');
+    }
+    await checkAndSetUserRole(result.user);
+    return result;
+  } catch (error) {
+    console.error('Registration error:', error);
+    throw error;
+  }
+};
 
 export const signInWithGoogle = async () => {
   try {

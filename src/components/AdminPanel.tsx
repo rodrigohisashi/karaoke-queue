@@ -139,7 +139,7 @@ const AdminPanel: React.FC = () => {
                           />
                         ) : (
                           <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                            {userData.displayName.charAt(0).toUpperCase()}
+                            {(userData.displayName || userData.email || '?').charAt(0).toUpperCase()}
                           </span>
                         )}
                       </div>

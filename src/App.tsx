@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueueProvider } from './context/QueueContext';
 import Header from './components/Header';
 import QueueList from './components/QueueList';
@@ -8,12 +8,21 @@ import JoinSession from './components/JoinSession';
 import AdminPanel from './components/AdminPanel';
 import { useQueue } from './context/QueueContext';
 import { UserPermission } from './types';
+import { auth } from './firebase/config';
 
 const KaraokeApp: React.FC = () => {
   const { userName, hasPermission } = useQueue();
   const [activeTab, setActiveTab] = useState<'queue' | 'admin'>('queue');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  if (!userName) {
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setIsAuthenticated(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (!isAuthenticated || !userName) {
     return <JoinSession />;
   }
 
