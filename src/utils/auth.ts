@@ -1,7 +1,7 @@
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { ref, get, set } from 'firebase/database';
-import { auth, googleProvider, db, ADMIN_PATH } from '../firebase/config';
-import { UserRole, UserPermission, RolePermissions } from '../types';
+import { auth, googleProvider, db, USERS_PATH } from '../firebase/config';
+import { UserRole, UserPermission } from '../types';
 
 export const signInWithGoogle = async () => {
   try {
@@ -35,17 +35,16 @@ export const subscribeToAuth = (callback: (user: User | null) => void) => {
 // Check if user has a role and set it if not
 const checkAndSetUserRole = async (user: User) => {
   try {
-    const userRef = ref(db, `${ADMIN_PATH}/${user.uid}`);
+    const userRef = ref(db, `${USERS_PATH}/${user.uid}`);
     const snapshot = await get(userRef);
     
     if (!snapshot.exists()) {
       // If user is not in the database, add them as a regular USER
       await set(userRef, {
-        role: UserRole.USER,
+        isAdmin: false,
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        permissions: RolePermissions[UserRole.USER],
         lastUpdated: Date.now()
       });
     }
@@ -57,38 +56,38 @@ const checkAndSetUserRole = async (user: User) => {
 // Get current user's role and permissions
 export const getUserRoleAndPermissions = async (): Promise<{ role: UserRole; permissions: UserPermission[] }> => {
   const user = auth.currentUser;
-  if (!user) return { role: UserRole.USER, permissions: RolePermissions[UserRole.USER] };
+  if (!user) return { role: UserRole.USER, permissions: [] };
 
   try {
-    const userRef = ref(db, `${ADMIN_PATH}/${user.uid}`);
+    const userRef = ref(db, `${USERS_PATH}/${user.uid}`);
     const snapshot = await get(userRef);
     
     if (snapshot.exists()) {
       const data = snapshot.val();
+      const isAdmin = data.isAdmin || false;
       return {
-        role: data.role || UserRole.USER,
-        permissions: data.permissions || RolePermissions[UserRole.USER]
+        role: isAdmin ? UserRole.ADMIN : UserRole.USER,
+        permissions: isAdmin ? Object.values(UserPermission) : []
       };
     }
     
-    return { role: UserRole.USER, permissions: RolePermissions[UserRole.USER] };
+    return { role: UserRole.USER, permissions: [] };
   } catch (error) {
     console.error('Error getting user role:', error);
-    return { role: UserRole.USER, permissions: RolePermissions[UserRole.USER] };
+    return { role: UserRole.USER, permissions: [] };
   }
 };
 
 // Set user role (only callable by admins)
-export const setUserRole = async (userId: string, role: UserRole) => {
+export const setUserRole = async (userId: string, isAdmin: boolean) => {
   try {
-    const userRef = ref(db, `${ADMIN_PATH}/${userId}`);
+    const userRef = ref(db, `${USERS_PATH}/${userId}`);
     const snapshot = await get(userRef);
     const currentData = snapshot.val() || {};
     
     await set(userRef, {
       ...currentData,
-      role,
-      permissions: RolePermissions[role],
+      isAdmin,
       lastUpdated: Date.now()
     });
   } catch (error) {
@@ -99,6 +98,7 @@ export const setUserRole = async (userId: string, role: UserRole) => {
 
 // Check if user has specific permission
 export const hasPermission = (permissions: UserPermission[], permission: UserPermission): boolean => {
-  return permissions.includes(permission);
+  // If user has any permissions, they have all permissions (admin)
+  return permissions.length > 0;
 };
 

@@ -24,5 +24,5 @@ setPersistence(auth, browserLocalPersistence)
         console.error("Auth persistence error:", error);
     });
 
-// Admin configuration
-export const ADMIN_PATH = 'admins';
+// Database paths
+export const USERS_PATH = 'users';
