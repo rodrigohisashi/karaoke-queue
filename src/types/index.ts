@@ -8,6 +8,7 @@ export interface Singer {
   timestamp: number;
   completed: boolean;
   computed_times_sang?: number;
+  isCurrentUser?: boolean;
 }
 
 export interface QueueContextType {
@@ -21,5 +22,8 @@ export interface QueueContextType {
   user: User | null;
   signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
+  viewMode: 'current' | 'completed';
+  setViewMode: (mode: 'current' | 'completed') => void;
+  completedSongs: Singer[];
 }
 

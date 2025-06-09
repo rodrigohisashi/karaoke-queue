@@ -10,7 +10,7 @@ interface QueueItemProps {
 }
 
 const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
-  const { currentSingerIndex, removeSinger, markAsSung } = useQueue();
+  const { currentSingerIndex, removeSinger, markAsSung, viewMode } = useQueue();
   const status = getSingerStatus(index, currentSingerIndex);
   const statusColor = getStatusColor(index, currentSingerIndex);
   
@@ -55,7 +55,7 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
           </div>
         </div>
         
-        {isCurrentUserEntry && (
+        {isCurrentUserEntry && viewMode === 'current' && (
           <div className="flex gap-2">
             {!singer.completed && index <= currentSingerIndex && (
               <button 
@@ -82,11 +82,11 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
           {singer.completed ? 'Completed' : status}
         </span>
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          Added {formatTimeAgo(singer.timestamp)}
+          {singer.completed ? 'Completed' : 'Added'} {formatTimeAgo(singer.timestamp)}
         </span>
       </div>
       
-      {isCurrentUserEntry && !singer.completed && (
+      {isCurrentUserEntry && !singer.completed && viewMode === 'current' && (
         <div className="absolute -right-1 -top-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-gray-800" />
       )}
     </div>

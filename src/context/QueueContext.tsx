@@ -16,6 +16,8 @@ import { QueueContextType, Singer } from '../types';
 import { subscribeToAuth, signInWithGoogle, signOutUser } from '../utils/auth';
 import { User } from 'firebase/auth';
 
+type ViewMode = 'current' | 'completed';
+
 const QueueContext = createContext<QueueContextType>({
     queue: [],
     currentSingerIndex: 0,
@@ -26,11 +28,14 @@ const QueueContext = createContext<QueueContextType>({
     setUserName: () => {},
     user: null,
     signInWithGoogle: async () => {},
-    signOutUser: async () => {}
+    signOutUser: async () => {},
+    viewMode: 'current',
+    setViewMode: () => {},
+    completedSongs: []
 });
 
 export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // The “live” queue after sorting. Exposed to consumers.
+    // The "live" queue after sorting. Exposed to consumers.
     const [queue, setQueue] = useState<Singer[]>([]);
     // Index of the first entry with completed === false
     const [currentSingerIndex, setCurrentSingerIndex] = useState<number>(0);
@@ -40,6 +45,8 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     // Firebase user state
     const [user, setUser] = useState<User | null>(null);
+    const [viewMode, setViewMode] = useState<ViewMode>('current');
+    const [completedSongs, setCompletedSongs] = useState<Singer[]>([]);
 
     // Persist userName into localStorage
     useEffect(() => {
@@ -67,7 +74,6 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const q = rtdbQuery(queueRef, orderByChild('timestamp'));
 
         const unsubscribe = onValue(q, (snapshot) => {
-            // Build rawList[] exactly as before…
             const dataObj = snapshot.val() || {};
             const rawList: Singer[] = Object.entries(dataObj).map(([key, value]) => {
                 const item = value as {
@@ -93,7 +99,14 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 };
             });
 
-            // Count how many times each user has “completed”
+            // Separate completed and current songs
+            const completed = rawList.filter(song => song.completed);
+            setCompletedSongs(completed.sort((a, b) => b.timestamp - a.timestamp));
+
+            // Filter out completed songs for the current queue
+            const currentSongs = rawList.filter(song => !song.completed);
+
+            // Count how many times each user has "completed"
             const counts: Record<string, number> = {};
             for (const e of rawList) {
                 if (e.completed) {
@@ -101,19 +114,19 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 }
             }
 
-            // Annotate each entry with its user’s sung‐count
-            for (const entry of rawList) {
+            // Annotate each entry with its user's sung-count
+            for (const entry of currentSongs) {
                 entry.computed_times_sang = counts[entry.name] || 0;
             }
 
             // Group entries by user
             const byUser: Record<string, Singer[]> = {};
-            rawList.forEach(entry => {
+            currentSongs.forEach(entry => {
                 if (!byUser[entry.name]) byUser[entry.name] = [];
                 byUser[entry.name].push(entry);
             });
 
-            // Sort each user’s array by timestamp (FIFO)
+            // Sort each user's array by timestamp (FIFO)
             Object.values(byUser).forEach(arr => {
                 arr.sort((a, b) => a.timestamp - b.timestamp);
             });
@@ -123,11 +136,11 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 const c1 = counts[u1] || 0;
                 const c2 = counts[u2] || 0;
                 if (c1 !== c2) return c1 - c2;
-                // tie-break by first entry’s timestamp
+                // tie-break by first entry's timestamp
                 return byUser[u1][0].timestamp - byUser[u2][0].timestamp;
             });
 
-            // Round‐robin across each user in `userList`
+            // Round-robin across each user in `userList`
             const interleaved: Singer[] = [];
             let more = true;
             while (more) {
@@ -144,7 +157,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             // Now interleaved[] is the final queue
             setQueue(interleaved);
 
-            // Find first not‐completed
+            // Find first not-completed
             const nextIdx = interleaved.findIndex(e => !e.completed);
             setCurrentSingerIndex(nextIdx !== -1 ? nextIdx : -1);
         });
@@ -179,7 +192,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     //
-    // ─── MARK “SANG” ──────────────────────────────────────────────────────────────────────
+    // ─── MARK "SANG" ──────────────────────────────────────────────────────────────────────
     //
     const markAsSung = async (id: string) => {
         // 1) Flip completed = true on /queue/{id}
@@ -191,7 +204,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 completed: true
             };
         });
-        // No separate /users counter: we’ll always recompute “how many times each user sang”
+        // No separate /users counter: we'll always recompute "how many times each user sang"
         // by re-scanning all entries in /queue. That keeps this simple.
     };
 
@@ -207,7 +220,10 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 setUserName,
                 user,
                 signInWithGoogle,
-                signOutUser
+                signOutUser,
+                viewMode,
+                setViewMode,
+                completedSongs
             }}
         >
             {children}
