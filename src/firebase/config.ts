@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,3 +17,12 @@ const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Set persistence to LOCAL (persists even after browser restart)
+setPersistence(auth, browserLocalPersistence)
+    .catch((error) => {
+        console.error("Auth persistence error:", error);
+    });
+
+// Admin configuration
+export const ADMIN_PATH = 'admins';

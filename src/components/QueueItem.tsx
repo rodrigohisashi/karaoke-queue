@@ -1,20 +1,39 @@
 import React from 'react';
-import { Music, Mic, X, Check } from 'lucide-react';
+import { Music, Mic, X, Check, GripVertical } from 'lucide-react';
 import { Singer } from '../types';
 import { formatTimeAgo, getSingerStatus, getStatusColor } from '../utils/helpers';
 import { useQueue } from '../context/QueueContext';
+import { UserPermission } from '../types';
 
 interface QueueItemProps {
   singer: Singer;
   index: number;
+  onDragStart?: (e: React.DragEvent, index: number) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent, index: number) => void;
 }
 
-const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
-  const { currentSingerIndex, removeSinger, markAsSung, viewMode } = useQueue();
+const QueueItem: React.FC<QueueItemProps> = ({ 
+  singer, 
+  index, 
+  onDragStart, 
+  onDragOver, 
+  onDrop 
+}) => {
+  const { currentSingerIndex, removeSinger, markAsSung, hasPermission, userRole } = useQueue();
   const status = getSingerStatus(index, currentSingerIndex);
   const statusColor = getStatusColor(index, currentSingerIndex);
   
   const isCurrentUserEntry = singer.isCurrentUser;
+  const canRemove = isCurrentUserEntry 
+    ? hasPermission(UserPermission.REMOVE_OWN_SONG)
+    : hasPermission(UserPermission.REMOVE_ANY_SONG);
+  
+  const canMarkSung = isCurrentUserEntry
+    ? hasPermission(UserPermission.MARK_OWN_SONG_SUNG)
+    : hasPermission(UserPermission.MARK_ANY_SONG_SUNG);
+
+  const canReorder = hasPermission(UserPermission.REORDER_QUEUE);
 
   const getCardStyle = () => {
     if (singer.completed) return 'border-green-500 bg-green-50/50 dark:bg-green-950/20';
@@ -28,9 +47,16 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
       className={`relative mb-4 p-4 rounded-lg border ${getCardStyle()} 
                 transition-all duration-300 hover:shadow-md
                 ${isCurrentUserEntry && !singer.completed ? 'bg-purple-50/50 dark:bg-purple-950/20' : 'bg-white dark:bg-gray-800'}`}
+      draggable={canReorder}
+      onDragStart={(e) => onDragStart?.(e, index)}
+      onDragOver={onDragOver}
+      onDrop={(e) => onDrop?.(e, index)}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center">
+          {canReorder && (
+            <GripVertical className="w-5 h-5 text-gray-400 mr-2 cursor-move" />
+          )}
           <div className={`flex items-center justify-center w-10 h-10 rounded-full ${singer.completed ? 'bg-green-500' : statusColor} text-white mr-4`}>
             {singer.completed ? (
               <Check className="w-5 h-5" />
@@ -55,9 +81,9 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
           </div>
         </div>
         
-        {isCurrentUserEntry && viewMode === 'current' && (
+        {!singer.completed && (
           <div className="flex gap-2">
-            {!singer.completed && index <= currentSingerIndex && (
+            {canMarkSung && index <= currentSingerIndex && (
               <button 
                 onClick={() => markAsSung(singer.id)}
                 className="text-gray-400 hover:text-green-500 transition-colors"
@@ -66,13 +92,15 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
                 <Check className="w-5 h-5" />
               </button>
             )}
-            <button 
-              onClick={() => removeSinger(singer.id)}
-              className="text-gray-400 hover:text-red-500 transition-colors"
-              aria-label="Remove from queue"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {canRemove && (
+              <button 
+                onClick={() => removeSinger(singer.id)}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+                aria-label="Remove from queue"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -86,7 +114,7 @@ const QueueItem: React.FC<QueueItemProps> = ({ singer, index }) => {
         </span>
       </div>
       
-      {isCurrentUserEntry && !singer.completed && viewMode === 'current' && (
+      {isCurrentUserEntry && !singer.completed && (
         <div className="absolute -right-1 -top-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-gray-800" />
       )}
     </div>

@@ -12,9 +12,9 @@ import {
     get
 } from 'firebase/database';
 import { db as rtdb } from '../firebase/config';
-import { QueueContextType, Singer } from '../types';
-import { subscribeToAuth, signInWithGoogle, signOutUser } from '../utils/auth';
-import { User } from 'firebase/auth';
+import { QueueContextType, Singer, UserRole, UserPermission } from '../types';
+import { subscribeToAuth, signInWithGoogle, signOutUser, getUserRoleAndPermissions, hasPermission } from '../utils/auth';
+import { User, UserCredential } from 'firebase/auth';
 
 type ViewMode = 'current' | 'completed';
 
@@ -24,14 +24,21 @@ const QueueContext = createContext<QueueContextType>({
     addToQueue: async () => {},
     removeSinger: async () => {},
     markAsSung: async () => {},
+    reorderQueue: async () => {},
     userName: null,
     setUserName: () => {},
     user: null,
-    signInWithGoogle: async () => {},
+    signInWithGoogle: async () => {
+        throw new Error('signInWithGoogle not implemented');
+    },
     signOutUser: async () => {},
     viewMode: 'current',
     setViewMode: () => {},
-    completedSongs: []
+    completedSongs: [],
+    userRole: UserRole.USER,
+    userPermissions: [],
+    checkUserRole: async () => {},
+    hasPermission: () => false
 });
 
 export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,6 +54,20 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [user, setUser] = useState<User | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>('current');
     const [completedSongs, setCompletedSongs] = useState<Singer[]>([]);
+    const [userRole, setUserRole] = useState<UserRole>(UserRole.USER);
+    const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
+
+    // Check user role and permissions
+    const checkUserRole = async () => {
+        const { role, permissions } = await getUserRoleAndPermissions();
+        setUserRole(role);
+        setUserPermissions(permissions);
+    };
+
+    // Check if user has specific permission
+    const checkPermission = (permission: UserPermission): boolean => {
+        return hasPermission(userPermissions, permission);
+    };
 
     // Persist userName into localStorage
     useEffect(() => {
@@ -57,10 +78,15 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Listen for Firebase Auth state changes
     useEffect(() => {
-        const unsubscribe = subscribeToAuth((firebaseUser) => {
+        const unsubscribe = subscribeToAuth(async (firebaseUser) => {
             setUser(firebaseUser);
             if (firebaseUser && firebaseUser.displayName) {
                 setUserName(firebaseUser.displayName);
+                // Check user role when user changes
+                await checkUserRole();
+            } else {
+                setUserRole(UserRole.USER);
+                setUserPermissions([]);
             }
         });
         return () => unsubscribe();
@@ -172,40 +198,77 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const addToQueue = async (song: string, artist?: string) => {
         if (!userName) return;
 
-        // Simply push a new node under /queue
-        const queueRef = ref(rtdb, 'queue');
-        const newRef = push(queueRef);
-        await set(newRef, {
+        const newSinger: Singer = {
+            id: Math.random().toString(36).substring(2, 10),
             name: userName,
             song,
-            artist: artist || null,
-            timestamp: serverTimestamp(),
-            completed: false
-        });
+            artist,
+            timestamp: Date.now(),
+            completed: false,
+            isCurrentUser: true
+        };
+
+        const queueRef = ref(rtdb, 'queue');
+        await push(queueRef, newSinger);
     };
 
     //
     // ─── REMOVE A SONG FROM THE QUEUE ────────────────────────────────────────────────────
     //
     const removeSinger = async (id: string) => {
-        await remove(ref(rtdb, `queue/${id}`));
+        const singer = queue.find(s => s.id === id);
+        if (!singer) return;
+
+        // Check permissions
+        if (singer.isCurrentUser) {
+            if (!checkPermission(UserPermission.REMOVE_OWN_SONG)) return;
+        } else {
+            if (!checkPermission(UserPermission.REMOVE_ANY_SONG)) return;
+        }
+
+        const singerRef = ref(rtdb, `queue/${id}`);
+        await remove(singerRef);
     };
 
     //
     // ─── MARK "SANG" ──────────────────────────────────────────────────────────────────────
     //
     const markAsSung = async (id: string) => {
-        // 1) Flip completed = true on /queue/{id}
-        const entryRef = ref(rtdb, `queue/${id}`);
-        await runTransaction(entryRef, (currentData) => {
-            if (!currentData) return null;
-            return {
-                ...currentData,
-                completed: true
-            };
+        const singer = queue.find(s => s.id === id);
+        if (!singer) return;
+
+        // Check permissions
+        if (singer.isCurrentUser) {
+            if (!checkPermission(UserPermission.MARK_OWN_SONG_SUNG)) return;
+        } else {
+            if (!checkPermission(UserPermission.MARK_ANY_SONG_SUNG)) return;
+        }
+
+        const singerRef = ref(rtdb, `queue/${id}`);
+        await runTransaction(singerRef, (currentData) => {
+            if (currentData) {
+                currentData.completed = true;
+            }
+            return currentData;
         });
-        // No separate /users counter: we'll always recompute "how many times each user sang"
-        // by re-scanning all entries in /queue. That keeps this simple.
+    };
+
+    // Reorder queue (admin only)
+    const reorderQueue = async (fromIndex: number, toIndex: number) => {
+        if (!checkPermission(UserPermission.REORDER_QUEUE)) return;
+
+        const queueRef = ref(rtdb, 'queue');
+        const newQueue = [...queue];
+        const [movedItem] = newQueue.splice(fromIndex, 1);
+        newQueue.splice(toIndex, 0, movedItem);
+
+        // Update timestamps to maintain order
+        const updates = newQueue.reduce((acc, singer, index) => {
+            acc[`${singer.id}/timestamp`] = Date.now() + index;
+            return acc;
+        }, {} as Record<string, number>);
+
+        await set(queueRef, updates);
     };
 
     return (
@@ -216,6 +279,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 addToQueue,
                 removeSinger,
                 markAsSung,
+                reorderQueue,
                 userName,
                 setUserName,
                 user,
@@ -223,7 +287,11 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 signOutUser,
                 viewMode,
                 setViewMode,
-                completedSongs
+                completedSongs,
+                userRole,
+                userPermissions,
+                checkUserRole,
+                hasPermission: checkPermission
             }}
         >
             {children}

@@ -1,11 +1,21 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useQueue } from '../context/QueueContext';
 import QueueItem from './QueueItem';
 import { Music, History } from 'lucide-react';
+import { UserPermission } from '../types';
 
 const QueueList: React.FC = () => {
-  const { queue, currentSingerIndex, viewMode, setViewMode, completedSongs } = useQueue();
+  const { 
+    queue, 
+    currentSingerIndex, 
+    viewMode, 
+    setViewMode, 
+    completedSongs,
+    hasPermission,
+    reorderQueue
+  } = useQueue();
   const currentSingerRef = useRef<HTMLDivElement>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   
   // Scroll to current singer when it changes
   useEffect(() => {
@@ -16,6 +26,24 @@ const QueueList: React.FC = () => {
       });
     }
   }, [currentSingerIndex, viewMode]);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) return;
+    
+    await reorderQueue(draggedIndex, dropIndex);
+    setDraggedIndex(null);
+  };
   
   const renderEmptyState = () => (
     <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -46,7 +74,13 @@ const QueueList: React.FC = () => {
             ref={viewMode === 'current' && index === currentSingerIndex ? currentSingerRef : null}
             className="transition-all duration-500 ease-in-out"
           >
-            <QueueItem singer={singer} index={index} />
+            <QueueItem 
+              singer={singer} 
+              index={index}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            />
           </div>
         ))}
       </div>
