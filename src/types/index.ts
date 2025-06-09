@@ -37,8 +37,9 @@ export interface Singer {
   artist?: string;
   timestamp: number;
   completed: boolean;
-  computed_times_sang?: number;
-  isCurrentUser?: boolean;
+  isCurrentUser: boolean;
+  computed_times_sang: number;
+  order?: number;
 }
 
 export interface AdminUser {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Music, Mic, X, Check, GripVertical } from 'lucide-react';
 import { Singer } from '../types';
 import { formatTimeAgo, getSingerStatus, getStatusColor } from '../utils/helpers';
@@ -21,6 +21,9 @@ const QueueItem: React.FC<QueueItemProps> = ({
   onDrop 
 }) => {
   const { currentSingerIndex, removeSinger, markAsSung, hasPermission, userRole } = useQueue();
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  
   const status = getSingerStatus(index, currentSingerIndex);
   const statusColor = getStatusColor(index, currentSingerIndex);
   
@@ -42,20 +45,49 @@ const QueueItem: React.FC<QueueItemProps> = ({
     return 'border-gray-200';
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    setIsDragging(true);
+    onDragStart?.(e, index);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+    onDragOver?.(e);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    setIsDragOver(false);
+    onDrop?.(e, index);
+  };
+
   return (
     <div 
       className={`relative mb-4 p-4 rounded-lg border ${getCardStyle()} 
                 transition-all duration-300 hover:shadow-md
-                ${isCurrentUserEntry && !singer.completed ? 'bg-purple-50/50 dark:bg-purple-950/20' : 'bg-white dark:bg-gray-800'}`}
+                ${isCurrentUserEntry && !singer.completed ? 'bg-purple-50/50 dark:bg-purple-950/20' : 'bg-white dark:bg-gray-800'}
+                ${isDragging ? 'opacity-50 cursor-grabbing' : ''}
+                ${isDragOver ? 'border-dashed border-purple-500 bg-purple-50/50 dark:bg-purple-950/20' : ''}
+                ${canReorder ? 'cursor-grab' : ''}`}
       draggable={canReorder}
-      onDragStart={(e) => onDragStart?.(e, index)}
-      onDragOver={onDragOver}
-      onDrop={(e) => onDrop?.(e, index)}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center">
           {canReorder && (
-            <GripVertical className="w-5 h-5 text-gray-400 mr-2 cursor-move" />
+            <GripVertical className={`w-5 h-5 text-gray-400 mr-2 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`} />
           )}
           <div className={`flex items-center justify-center w-10 h-10 rounded-full ${singer.completed ? 'bg-green-500' : statusColor} text-white mr-4`}>
             {singer.completed ? (

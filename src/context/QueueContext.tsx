@@ -9,7 +9,8 @@ import {
     serverTimestamp,
     query as rtdbQuery,
     orderByChild,
-    get
+    get,
+    update
 } from 'firebase/database';
 import { db as rtdb } from '../firebase/config';
 import { QueueContextType, Singer, UserRole, UserPermission } from '../types';
@@ -92,9 +93,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return () => unsubscribe();
     }, []);
 
-    //
-    // ─── LISTEN TO /queue AND REBUILD + SORT EVERYTHING ─────────────────────────────
-    //
+    // Listen to queue changes
     useEffect(() => {
         const queueRef = ref(rtdb, 'queue');
         const q = rtdbQuery(queueRef, orderByChild('timestamp'));
@@ -108,6 +107,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     artist?: string | null;
                     timestamp: number | object;
                     completed: boolean;
+                    order?: number;
                 };
                 const tsNum = typeof item.timestamp === 'object'
                     ? Date.now()
@@ -121,7 +121,8 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     timestamp: tsNum,
                     completed: item.completed,
                     isCurrentUser: item.name === userName,
-                    computed_times_sang: 0
+                    computed_times_sang: 0,
+                    order: item.order
                 };
             });
 
@@ -132,6 +133,11 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             // Filter out completed songs for the current queue
             const currentSongs = rawList.filter(song => !song.completed);
 
+            // Split songs into manually ordered and naturally ordered
+            const manuallyOrdered = currentSongs.filter(song => song.order !== undefined)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const naturallyOrdered = currentSongs.filter(song => song.order === undefined);
+
             // Count how many times each user has "completed"
             const counts: Record<string, number> = {};
             for (const e of rawList) {
@@ -141,13 +147,13 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
 
             // Annotate each entry with its user's sung-count
-            for (const entry of currentSongs) {
+            for (const entry of naturallyOrdered) {
                 entry.computed_times_sang = counts[entry.name] || 0;
             }
 
-            // Group entries by user
+            // Group naturally ordered entries by user
             const byUser: Record<string, Singer[]> = {};
-            currentSongs.forEach(entry => {
+            naturallyOrdered.forEach(entry => {
                 if (!byUser[entry.name]) byUser[entry.name] = [];
                 byUser[entry.name].push(entry);
             });
@@ -180,35 +186,34 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 }
             }
 
-            // Now interleaved[] is the final queue
-            setQueue(interleaved);
+            // Combine manually ordered songs with naturally ordered songs
+            const finalQueue = [...manuallyOrdered, ...interleaved];
+            setQueue(finalQueue);
 
             // Find first not-completed
-            const nextIdx = interleaved.findIndex(e => !e.completed);
+            const nextIdx = finalQueue.findIndex(e => !e.completed);
             setCurrentSingerIndex(nextIdx !== -1 ? nextIdx : -1);
         });
 
         return () => unsubscribe();
     }, [userName]);
 
-
-    //
-    // ─── ADD A SONG TO THE QUEUE ─────────────────────────────────────────────────────────
-    //
+    // Add to queue
     const addToQueue = async (song: string, artist?: string) => {
         if (!userName) return;
 
-        const newSinger: Singer = {
+        const queueRef = ref(rtdb, 'queue');
+        const newSinger = {
             id: Math.random().toString(36).substring(2, 10),
             name: userName,
             song,
-            artist,
             timestamp: Date.now(),
             completed: false,
-            isCurrentUser: true
+            isCurrentUser: true,
+            computed_times_sang: 0,
+            ...(artist ? { artist } : {}) // Only include artist if it's provided
         };
 
-        const queueRef = ref(rtdb, 'queue');
         await push(queueRef, newSinger);
     };
 
@@ -257,18 +262,23 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const reorderQueue = async (fromIndex: number, toIndex: number) => {
         if (!checkPermission(UserPermission.REORDER_QUEUE)) return;
 
-        const queueRef = ref(rtdb, 'queue');
-        const newQueue = [...queue];
-        const [movedItem] = newQueue.splice(fromIndex, 1);
-        newQueue.splice(toIndex, 0, movedItem);
+        try {
+            const queueRef = ref(rtdb, 'queue');
+            const newQueue = [...queue];
+            const [movedItem] = newQueue.splice(fromIndex, 1);
+            newQueue.splice(toIndex, 0, movedItem);
 
-        // Update timestamps to maintain order
-        const updates = newQueue.reduce((acc, singer, index) => {
-            acc[`${singer.id}/timestamp`] = Date.now() + index;
-            return acc;
-        }, {} as Record<string, number>);
+            // Calculate new orders for all items up to the moved item's new position
+            const updates: Record<string, number> = {};
+            for (let i = 0; i <= toIndex; i++) {
+                updates[`${newQueue[i].id}/order`] = i;
+            }
 
-        await set(queueRef, updates);
+            // Update the orders in Firebase
+            await update(queueRef, updates);
+        } catch (error) {
+            console.error('Error reordering queue:', error);
+        }
     };
 
     return (
