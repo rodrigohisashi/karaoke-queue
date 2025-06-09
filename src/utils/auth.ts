@@ -103,14 +103,22 @@ export const getUserRoleAndPermissions = async (): Promise<{ role: UserRole; per
       const isAdmin = data.isAdmin || false;
       return {
         role: isAdmin ? UserRole.ADMIN : UserRole.USER,
-        permissions: isAdmin ? Object.values(UserPermission) : []
+        permissions: isAdmin 
+          ? Object.values(UserPermission) 
+          : [UserPermission.MARK_OWN_SONG_SUNG, UserPermission.REMOVE_OWN_SONG]
       };
     }
     
-    return { role: UserRole.USER, permissions: [] };
+    return { 
+      role: UserRole.USER, 
+      permissions: [UserPermission.MARK_OWN_SONG_SUNG, UserPermission.REMOVE_OWN_SONG] 
+    };
   } catch (error) {
     console.error('Error getting user role:', error);
-    return { role: UserRole.USER, permissions: [] };
+    return { 
+      role: UserRole.USER, 
+      permissions: [UserPermission.MARK_OWN_SONG_SUNG, UserPermission.REMOVE_OWN_SONG] 
+    };
   }
 };
 
